@@ -263,9 +263,8 @@ prifdrec(IfdRec *r, int bo, Biobuf *b)
 	ExifData *e;
 
 	for(e = exiftab; e->tag != 0; e++){
-		if(e->tag != r->tag)
-			continue;
-		break;
+		if(e->tag == r->tag)
+			break;
 	}
 	if(e->show || aflag){
 		if(*e->str != 0){
@@ -324,7 +323,7 @@ prlong0(IfdRec *r, int bo, int fd, void*, int s)
 		return print(fmt, get32(r->val, bo));
 	}
 	for(i = 0; i < r->cnt; i++){
-		if(pread(fd, buf, 2, r->ival + 12 + 4*i) < 0)
+		if(pread(fd, buf, 2, r->ival + 4*i) < 0)
 			return -1;
 		print(fmt, get32(buf, bo));
 	}
@@ -358,7 +357,7 @@ prshort(IfdRec *r, int bo, int fd, void*)
 		return print("%uhd %uhd", get16(r->val, bo), get16(r->val+2, bo));
 	}
 	for(i = 0; i < r->cnt; i++){
-		if(pread(fd, buf, 2, r->ival + 12 + 2*i) < 0)
+		if(pread(fd, buf, 2, r->ival + 2*i) < 0)
 			return -1;
 		print("%uhd", get16(buf, bo));
 	}
@@ -375,7 +374,7 @@ prratio0(IfdRec *r, int bo, int fd, void*, int s)
 	n = sizeof(buf);
 	if(8*r->cnt < n)
 		n = 8*r->cnt;
-	if((n = pread(fd, buf, n, r->ival + 12)) < 0)
+	if((n = pread(fd, buf, n, r->ival)) < 0)
 		return -1;
 	for(i = 0; i < n; i += 8){
 		if(i > 0)
@@ -410,7 +409,7 @@ prdec0(IfdRec *r, int bo, int fd, void *aux, int s)
 	if(suffix == nil)
 		suffix = "";
 	for(i = 0; i < r->cnt; i++){
-		if(pread(fd, buf, 8, r->ival + 12 + 8*i) < 0)
+		if(pread(fd, buf, 8, r->ival + 8*i) < 0)
 			return -1;
 		if(i > 0)
 			print(" ");
@@ -460,7 +459,7 @@ prascii(IfdRec *r, int, int fd, void*)
 	n = sizeof(buf);
 	if(r->cnt < n)
 		n = r->cnt;
-	if((n = pread(fd, buf, n, r->ival + 12)) < 0)
+	if((n = pread(fd, buf, n, r->ival)) < 0)
 		return -1;
 	return write(1, buf, n);
 }
@@ -539,7 +538,7 @@ dumpinfo(Biobuf *r)
 {
 	char buf[64];
 	u16int w, soi, appn, len, ver, nents;
-	u32int ifdoff, exiftag, gpstag;
+	u32int segoff, ifdoff, exiftag, gpstag;
 	int i, bo, total;
 	IfdRec rec;
 
@@ -547,18 +546,26 @@ dumpinfo(Biobuf *r)
 	total = 0;
 	if(parse(r, bo, "www", &soi, &appn, &len) < 0)
 		goto Badfmt;
-	if(soi != 0xffd8 || (appn & 0xfff0) != 0xffe0)
+	if(soi != 0xffd8)
 		goto Badfmt;
-	switch(appn & 0xf){
-	case 1:
-		break;
-	case 0:
-		fprint(2, "JFIF\n");
-	default:
-		goto Badfmt;
+	for(;;){
+		if((appn&0xfff0) != 0xffe0)
+			goto Badfmt;
+		if((appn&0xf) == 1)
+			break;
+		if(len < 2)
+			goto Badfmt;
+		len -= 2;
+		while(len-- > 0){
+			if(Bgetc(r) < 0)
+				goto Badfmt;
+		}
+		if(parse(r, bo, "ww", &appn, &len) < 0)
+			goto Badfmt;
 	}
-	if(Bread(r, buf, 6) != 6 || strncmp(buf, "Exif", 6) != 0)
+	if(Bread(r, buf, 6) != 6 || memcmp(buf, "Exif\0\0", 6) != 0)
 		goto Badfmt;
+	segoff = Boffset(r);
 	if(read16(r, bo, &w) < 0)
 		goto Badfmt;
 	switch(w){
@@ -584,7 +591,7 @@ dumpinfo(Biobuf *r)
 			memset(&rec, 0, sizeof(rec));
 			if(parse(r, bo, "wwWX", &rec.tag, &rec.fmt, &rec.cnt, rec.val) < 0)
 				goto Badfmt;
-			rec.ival = get32(rec.val, bo);
+			rec.ival = segoff + get32(rec.val, bo);
 			switch(rec.tag){
 			case ExifTag:
 				exiftag = rec.ival;
@@ -610,7 +617,7 @@ dumpinfo(Biobuf *r)
 			}else
 				break;
 		}
-		Bseek(r, ifdoff+12, 0);
+		Bseek(r, ifdoff, 0);
 	}
 	return total;
 Badfmt:
