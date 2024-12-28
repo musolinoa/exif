@@ -63,6 +63,13 @@ enum{
 	Contrast,
 	Saturation,
 	Sharpness,
+	Altitude=0x0006,
+	LatitudeHemisphere=0x0001,
+	Latitude=0x0002,
+	LongitudeHemisphere=0x0003,
+	Longitude=0x0004,
+	ImageDirection=0x0011,
+	HorizontalPositioningError=0x001f,
 };
 
 enum{
@@ -177,6 +184,13 @@ static ExifData exiftab[] = {
 	{ Contrast, "Contrast" },
 	{ Saturation, "Saturation" },
 	{ Sharpness, "Sharpness" },
+	{ Altitude, "Altitude", 1, prdec, "m" },
+	{ LatitudeHemisphere, "LatitudeHemisphere", 1},
+	{ Latitude, "Latitude", 1, prdec},
+	{ LongitudeHemisphere, "LongitudeHemisphere", 1},
+	{ Longitude, "Longitude", 1, prdec},
+	{ ImageDirection, "ImageDirection", 1, prdec},
+	{ HorizontalPositioningError, "HorizontalPositioningError", 0, prdec},
 
 	{ 0 }
 };
